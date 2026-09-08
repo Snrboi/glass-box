@@ -22,6 +22,14 @@ class Governor:
     def __init__(self, policy: dict):
         self.policy = policy
         self._cfg = {r["id"]: r for r in policy["rules"]}
+        # YAML order is the evaluation order (policy.yaml is the source of truth).
+        self.order = [r["id"] for r in policy["rules"]]
+        unknown = [rid for rid in self.order if rid not in RULES]
+        if unknown:
+            raise ValueError(f"unknown rule ids in policy.yaml: {unknown}")
+        missing = [rid for rid in EVALUATION_ORDER if rid not in self._cfg]
+        if missing:
+            raise ValueError(f"policy.yaml missing rules: {missing}")
 
     # ------------------------------------------------------------------
     def _context(self, proposal: dict, market: dict, portfolio: dict) -> dict:
@@ -49,18 +57,18 @@ class Governor:
         }
 
     # ------------------------------------------------------------------
-    def evaluate(self, proposal: dict, market: dict, portfolio: dict) -> dict:
-        """Run all five rules in fixed order. Returns verdicts only —
+    def evaluate(self, proposal: dict, market: dict, portfolio: dict) -> list:
+        """Run all five rules in fixed order. Returns a list of verdicts —
         use ``decide`` for the final outcome."""
         ctx = self._context(proposal, market, portfolio)
-        verdicts = [RULES[rid](ctx, self._cfg[rid]) for rid in EVALUATION_ORDER]
+        verdicts = [RULES[rid](ctx, self._cfg[rid]) for rid in self.order]
         return verdicts
 
     # ------------------------------------------------------------------
     def decide(self, proposal: dict, verdicts: list[dict],
-               llm_malformed: bool = False) -> dict:
+               llm_malformed: bool = False,
+               injection_detected: bool = False) -> dict:
         """Apply outcome precedence to a proposal + its five verdicts."""
-        by_id = {v["id"]: v for v in verdicts}
         halts = [v for v in verdicts if v["verdict"] == "HALT"]
         rule_escalates = [v for v in verdicts if v["verdict"] == "ESCALATE"]
         blocks = [v for v in verdicts if v["verdict"] == "BLOCK"]
@@ -71,6 +79,12 @@ class Governor:
             winner = halts[0]
             return {"outcome": "HALT", "reason": winner["reason"],
                     "winning_rules": [winner["id"]], "precedence": PRECEDENCE}
+
+        # 1b. Untrusted-input detector — independent of the model.
+        if injection_detected:
+            return {"outcome": "ESCALATE",
+                    "reason": "ESCALATE_PROMPT_INJECTION",
+                    "winning_rules": ["INPUT"], "precedence": PRECEDENCE}
 
         # 2. ESCALATE tier — model-side signals first, then the rule breach.
         if llm_malformed:

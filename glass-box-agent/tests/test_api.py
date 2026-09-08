@@ -56,6 +56,8 @@ def test_chain_verify_endpoint_valid(client):
     body = res.json()
     assert body["valid"] is True
     assert body["checked"] == 5
+    assert body["head_valid"] is True
+    assert body["key_id"]
 
 
 def test_concurrent_tick_returns_409_over_http(client):
@@ -69,6 +71,26 @@ def test_concurrent_tick_returns_409_over_http(client):
     assert res.status_code == 409
     assert res.json()["error"] == "tick_in_progress"
     assert services.store.count_of_type("CYCLE_STARTED") == 0
+
+
+def test_halt_clear(client):
+    s = client.app.state.services
+    s.agent_state = "HALTED"
+    res = client.post("/api/agent/tick")
+    assert res.status_code == 409
+    assert res.json()["error"] == "agent_halted"
+    res = client.post("/api/agent/control", json={"action": "halt_clear"})
+    assert res.status_code == 200
+    assert res.json()["agent_state"] == "RUNNING"
+    res = client.post("/api/agent/tick")
+    assert res.status_code == 200
+
+
+def test_healthz_includes_portfolio(client):
+    body = client.get("/healthz").json()
+    assert "portfolio" in body
+    assert body["portfolio"]["cash_usdt"] == 1000.0
+    assert body["policy_hash"]
 
 
 def test_agent_control_pause_resume(client):
@@ -109,10 +131,26 @@ def test_dashboard_smoke(client):
     html = res.text
     assert "GLASS BOX" in html
     assert "RUN TICK" in html
+    assert "PAUSE" in html
     assert "VERIFY CHAIN" in html
     assert "SIMULATED DATA" in html and "DRY RUN" in html
     # no frontend framework / build pipeline (PRD §2 non-goals)
     assert "cdn" not in html.lower()
+
+
+def test_agent_state_and_simulator_persist(tmp_path):
+    from app.main import Services
+    data = tmp_path / "persist"
+    s = Services(data_dir=data, phase_delay_ms=0)
+    s.cycle.run()
+    s.agent_state = "HALTED"
+    s.store.close()
+    s2 = Services(data_dir=data, phase_delay_ms=0)
+    try:
+        assert s2.agent_state == "HALTED"
+        assert s2.market.peek_scenario()["name"] == "low_confidence"
+    finally:
+        s2.store.close()
 
 
 def test_sse_event_appears(tmp_path):

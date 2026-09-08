@@ -16,12 +16,12 @@ import json
 import threading
 
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from ..agent.cycle import (EVENT_CYCLE_STARTED, EVENT_DECISION,
                            AgentHalted, AgentPaused, TickConflict)
-from ..audit.verify import verify_chain
+from ..audit.verify import verify_store
 from .sse import stream_from_queue
 
 router = APIRouter()
@@ -93,6 +93,9 @@ def healthz(request: Request):
         "events": s.store.count(),
         "market_source": s.market.name,
         "llm_source": s.llm.name,
+        "policy_hash": s.policy_meta.get("hash"),
+        "key_id": s.store.key_id(),
+        "portfolio": s.portfolio_public(),
     }
 
 
@@ -124,6 +127,9 @@ def decisions(request: Request, limit: int = Query(50, ge=1, le=500)):
         "summary": _summary_counters(s.store),
         "agent_state": s.agent_state,
         "events": s.store.count(),
+        "portfolio": s.portfolio_public(),
+        "policy_hash": s.policy_meta.get("hash"),
+        "key_id": s.store.key_id(),
     }
 
 
@@ -142,9 +148,7 @@ def decision_detail(request: Request, decision_id: str):
 @router.get("/api/chain/verify")
 def chain_verify(request: Request):
     s = _services(request)
-    result = verify_chain(s.store.all_events())
-    result["total"] = s.store.count()
-    return result
+    return verify_store(s.store)
 
 
 @router.post("/api/agent/tick")
@@ -196,9 +200,21 @@ def agent_control(request: Request, body: ControlBody):
 
 @router.get("/api/export/decisions.jsonl")
 def export_jsonl(request: Request):
+    """Export from SQLite (source of truth), not the JSONL mirror."""
     s = _services(request)
-    if not s.jsonl_path.exists():
+    events = s.store.all_events()
+    if not events:
         return JSONResponse({"error": "no_chain_yet"}, status_code=404)
-    return FileResponse(str(s.jsonl_path),
-                        media_type="application/x-ndjson",
-                        filename="decisions.jsonl")
+    lines = []
+    for event in events:
+        out = dict(event)
+        if isinstance(out["payload"], str):
+            out["payload"] = json.loads(out["payload"])
+        lines.append(json.dumps(out, sort_keys=True, separators=(",", ":"),
+                                ensure_ascii=False))
+    body = "\n".join(lines) + "\n"
+    return StreamingResponse(
+        iter([body]),
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": 'attachment; filename="decisions.jsonl"'},
+    )

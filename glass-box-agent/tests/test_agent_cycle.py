@@ -93,7 +93,7 @@ def test_prompt_injection_in_market_data_is_inert(services):
         result = services.cycle.run()
     assert result["scenario"] == "prompt_injection"
     assert result["outcome"] == "ESCALATE"
-    assert result["reason"] == "ESCALATE_MODEL_FLAGGED"
+    assert result["reason"] == "ESCALATE_PROMPT_INJECTION"
     events = _events(services, result["decision_id"])
     assert EVENT_EXECUTION_RESULT not in [e["event_type"] for e in events]
 
@@ -132,3 +132,102 @@ def test_concurrent_ticks_are_rejected_not_corrupted(services):
     # exactly one cycle started — no half-written second cycle
     from app.agent.cycle import EVENT_CYCLE_STARTED
     assert services.store.count_of_type(EVENT_CYCLE_STARTED) == 1
+
+
+def _proposal(action, symbol="BTCUSDT", notional=50.0, confidence=0.62):
+    return json.dumps({
+        "action": action,
+        "symbol": symbol,
+        "quote_notional_usdt": notional,
+        "confidence": confidence,
+        "thesis_plain_english": "Stub proposal for a unit test.",
+        "factors": [{"name": "test", "value": "yes"}],
+        "flags": [],
+    })
+
+
+class _StubLLM:
+    name = "stub"
+
+    def __init__(self, raw: str):
+        self.raw = raw
+        self.calls = 0
+
+    def propose(self, snapshot, focus_symbol):
+        self.calls += 1
+        return self.raw
+
+
+def test_cycle_started_records_policy_hash(services):
+    result = services.cycle.run()
+    events = _events(services, result["decision_id"])
+    payload = json.loads(events[0]["payload"])
+    assert events[0]["event_type"] == "CYCLE_STARTED"
+    assert "policy" in payload
+    assert len(payload["policy"]["hash"]) == 64
+    assert [r["id"] for r in payload["policy"]["rules"]] == [
+        "P-05", "P-01", "P-02", "P-03", "P-04"]
+
+
+def test_prompt_injection_escalates_even_if_model_buys(services):
+    """Independent detector, not the LLM, is the control."""
+    services.market._idx = 2  # prompt_injection scenario
+    services.cycle.llm = _StubLLM(_proposal("BUY"))
+    result = services.cycle.run()
+    assert result["scenario"] == "prompt_injection"
+    assert result["outcome"] == "ESCALATE"
+    assert result["reason"] == "ESCALATE_PROMPT_INJECTION"
+    events = _events(services, result["decision_id"])
+    analysis = json.loads(events[2]["payload"])
+    assert analysis["llm"]["injection_detected"] is True
+    assert "prompt_injection_detected" in analysis["proposal"]["flags"]
+    assert EVENT_EXECUTION_RESULT not in [e["event_type"] for e in events]
+
+
+def test_buy_without_cash_is_blocked(services):
+    services.store.portfolio_set({
+        "cash_usdt": 1.0,
+        "positions": {"BTC": {"qty": 0.0, "avg_cost": 0.0},
+                      "ETH": {"qty": 0.0, "avg_cost": 0.0}},
+        "day_realized_pnl_usdt": 0.0,
+    })
+    result = services.cycle.run()
+    assert result["outcome"] == "BLOCK"
+    assert result["reason"] == "BLOCK_INSUFFICIENT_CASH"
+    assert result["executed"] is False
+
+
+def test_sell_without_position_is_blocked(services):
+    services.cycle.llm = _StubLLM(_proposal("SELL"))
+    result = services.cycle.run()
+    assert result["outcome"] == "BLOCK"
+    assert result["reason"] == "BLOCK_NO_POSITION"
+
+
+def test_sell_fill_after_buy(services):
+    bought = services.cycle.run()
+    assert bought["outcome"] == "EXECUTE"
+    services.cycle.llm = _StubLLM(_proposal("SELL", notional=50.0))
+    result = services.cycle.run()
+    assert result["outcome"] == "EXECUTE"
+    events = _events(services, result["decision_id"])
+    execution = json.loads(events[-1]["payload"])
+    assert execution["side"] == "SELL"
+    assert execution["status"] == "FILLED"
+    after = execution["portfolio_after"]
+    assert after["positions"]["BTC"]["qty"] == 0.0
+    assert after["cash_usdt"] > 900
+
+
+def test_portfolio_cache_tamper_is_rebuilt_from_chain(services):
+    first = services.cycle.run()
+    assert first["executed"] is True
+    real = services.venue.current()
+    services.store.portfolio_set({
+        "cash_usdt": 999999.0,
+        "positions": real["positions"],
+        "day_realized_pnl_usdt": 0.0,
+    })
+    services.cycle.run()  # rebuilds at start; second scenario BLOCKs
+    restored = services.venue.current()
+    assert restored["cash_usdt"] == real["cash_usdt"]

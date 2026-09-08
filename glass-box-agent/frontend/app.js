@@ -48,6 +48,7 @@ function renderAgentState(s) {
   else pill.classList.add("pill-paused");
   document.getElementById("btn-resume").hidden = s !== "PAUSED";
   document.getElementById("btn-clear-halt").hidden = s !== "HALTED";
+  document.getElementById("btn-pause").hidden = s !== "RUNNING";
   document.getElementById("btn-tick").disabled = s !== "RUNNING";
 }
 
@@ -57,6 +58,19 @@ function renderCounters(summary) {
   document.getElementById("cnt-block").textContent = summary.block;
   document.getElementById("cnt-escalate").textContent =
     summary.escalate + summary.halt;
+  document.getElementById("cnt-hold").textContent = summary.hold || 0;
+}
+
+function renderPortfolio(p) {
+  if (!p) return;
+  document.getElementById("pf-cash").textContent =
+    p.cash_usdt == null ? "—" : money(p.cash_usdt);
+  document.getElementById("pf-btc").textContent =
+    p.BTC == null ? "—" : Number(p.BTC);
+  document.getElementById("pf-eth").textContent =
+    p.ETH == null ? "—" : Number(p.ETH);
+  document.getElementById("pf-pnl").textContent =
+    p.day_realized_pnl_usdt == null ? "—" : Number(p.day_realized_pnl_usdt).toFixed(2);
 }
 
 // ---------------------------------------------------------- audit banner
@@ -77,14 +91,18 @@ function renderAuditBanner() {
   if (v.valid) {
     banner.className = "audit audit-ok";
     status.textContent = "✓ VERIFIED";
-    detail.textContent = v.checked + " / " + state.eventCount
+    let msg = v.checked + " / " + state.eventCount
       + " EVENTS · every hash recomputed from genesis · "
       + "sequence + previous-hash continuity intact";
+    if (v.head_valid) msg += " · head MAC ok";
+    if (v.key_id) msg += " · key " + v.key_id;
+    detail.textContent = msg;
   } else {
     banner.className = "audit audit-broken";
     status.textContent = "✕ CHAIN BROKEN";
     const kind = { sequence: "SEQUENCE BREAK", prev_hash: "CHAIN LINK BREAK",
-                   record_hash: "CONTENT TAMPER" }[v.first_break?.kind] || "BREAK";
+                   record_hash: "CONTENT TAMPER",
+                   head_mac: "HEAD MAC BREAK" }[v.first_break?.kind] || "BREAK";
     status.textContent += "  ·  FIRST BREAK: SEQ " + v.first_break_seq;
     if (v.first_break && v.first_break.kind !== "sequence") {
       detail.appendChild(el("div", null, kind + " AT SEQ " + v.first_break.seq));
@@ -113,6 +131,13 @@ async function runVerification() {
   }
 }
 
+let verifyTimer = null;
+function scheduleVerification() {
+  if (!state.verification) return;
+  clearTimeout(verifyTimer);
+  verifyTimer = setTimeout(runVerification, 350);
+}
+
 // ------------------------------------------------------------ trace pane
 function outcomeClass(o) {
   return { EXECUTE: "oc-execute", BLOCK: "oc-block", ESCALATE: "oc-escalate",
@@ -134,6 +159,9 @@ function buildTraceCard(dec) {
   const head = el("div", "trace-head");
   head.appendChild(el("span", "trace-id", dec.decision_id));
   head.appendChild(el("span", "trace-sym", dec.symbol || "—"));
+  if (dec.scenario) {
+    head.appendChild(el("span", "trace-scenario", dec.scenario));
+  }
   head.appendChild(el("span", "outcome-chip " + outcomeClass(dec.outcome),
                       dec.outcome || "PENDING"));
   head.appendChild(el("span", "trace-time", fmtTime(dec.ts)));
@@ -244,6 +272,29 @@ function renderDetail(detail) {
       "confidence " + Number(analysis.confidence).toFixed(2)));
   }
   root.appendChild(header);
+
+  // -- Chained audit record (seq / hash / prev) ---------------------------
+  const [audWrap, audBox] = sectionBox("CHAINED AUDIT RECORD");
+  const at = el("table", "data chain-table");
+  const atHead = el("thead");
+  const atHr = el("tr");
+  for (const h of ["STEP", "SEQ", "RECORD HASH", "PREV HASH"]) {
+    atHr.appendChild(el("th", null, h));
+  }
+  atHead.appendChild(atHr);
+  at.appendChild(atHead);
+  const atBody = el("tbody");
+  for (const e of events) {
+    const tr = el("tr");
+    tr.appendChild(el("td", null, e.event_type));
+    tr.appendChild(el("td", "mono", String(e.seq)));
+    tr.appendChild(el("td", "mono", frag(e.record_hash)));
+    tr.appendChild(el("td", "mono muted", frag(e.prev_hash)));
+    atBody.appendChild(tr);
+  }
+  at.appendChild(atBody);
+  audBox.appendChild(at);
+  root.appendChild(audWrap);
 
   // -- What the agent saw -------------------------------------------------
   const [sawWrap, sawBox] = sectionBox("WHAT THE AGENT SAW");
@@ -502,6 +553,13 @@ function upsertDecision(ev) {
     dec.outcome = ev.payload.action;
     dec.symbol = ev.payload.symbol;
   }
+  if (ev.event_type === "DATA_SNAPSHOT" && ev.payload) {
+    dec.scenario = ev.payload.scenario;
+  }
+  if (ev.event_type === "EXECUTION_RESULT" && ev.payload
+      && ev.payload.portfolio_after) {
+    renderPortfolio(ev.payload.portfolio_after);
+  }
   return dec;
 }
 
@@ -519,7 +577,7 @@ function onAuditEvent(ev) {
   }
   // Any new event may extend the chain beyond the last verification;
   // re-verify quietly so the banner stays honest (PRD §9).
-  if (state.verification) runVerification();
+  if (state.verification) scheduleVerification();
 }
 
 let counters = { cycles: 0, execute: 0, block: 0, escalate: 0, halt: 0, hold: 0 };
@@ -557,11 +615,19 @@ async function boot() {
   const dres = await (await fetch("/api/decisions?limit=50")).json();
   counters = dres.summary;
   renderCounters(counters);
+  renderPortfolio(dres.portfolio);
+  if (dres.policy_hash) {
+    document.getElementById("pf-policy").textContent =
+      "policy " + frag(dres.policy_hash);
+  }
+  if (dres.key_id) {
+    document.getElementById("pf-key").textContent = "key " + dres.key_id;
+  }
 
   for (const s of dres.decisions) {
     state.decisions.set(s.decision_id, {
       decision_id: s.decision_id, ts: s.ts, symbol: s.symbol,
-      outcome: s.outcome,
+      outcome: s.outcome, scenario: s.scenario,
       event_types: s.executed
         ? STEP_DEFS.map((x) => x[0])
         : STEP_DEFS.slice(0, 4).map((x) => x[0]),
@@ -610,6 +676,11 @@ document.getElementById("btn-tick").addEventListener("click", async (e) => {
 });
 
 document.getElementById("btn-verify").addEventListener("click", runVerification);
+
+document.getElementById("btn-pause").addEventListener("click", async () => {
+  const r = await postJSON("/api/agent/control", { action: "pause" });
+  if (r.body.agent_state) renderAgentState(r.body.agent_state);
+});
 
 document.getElementById("btn-resume").addEventListener("click", async () => {
   const r = await postJSON("/api/agent/control", { action: "resume" });

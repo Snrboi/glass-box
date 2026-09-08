@@ -34,13 +34,12 @@ def main() -> int:
     if args.jsonl:
         events = JsonlMirror(data_dir / "decisions.jsonl").read_all()
         source = str(data_dir / "decisions.jsonl")
+        result = verify_chain(events)
     else:
         store = AuditStore(data_dir / "glassbox.db")  # opens read/write, never edits
-        events = store.all_events()
-        store.close()
         source = str(data_dir / "glassbox.db")
-
-    result = verify_chain(events)
+        result = verify_store(store)
+        store.close()
     print(json.dumps(result, indent=2))
     if result["valid"]:
         print(f"✓ CHAIN VERIFIED — {result['checked']} events ({source})")

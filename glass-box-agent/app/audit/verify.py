@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import json
 
+import hmac
+
 from .chain import ZERO, compute_hash
+from .sign import head_mac
 
 
 def verify_chain(events: list[dict]) -> dict:
@@ -57,3 +60,45 @@ def verify_chain(events: list[dict]) -> dict:
         prev = event["record_hash"]
     return {"valid": True, "checked": checked, "first_break_seq": None,
             "first_break": None}
+
+
+def verify_head(events: list[dict], head: dict | None, key: bytes) -> dict:
+    """Check the HMAC over the current chain head (seq + record_hash)."""
+    if not events:
+        return {"head_valid": True, "reason": None}
+    last = events[-1]
+    if not head or not head.get("mac") or head.get("seq") is None:
+        return {"head_valid": False, "reason": "missing_head_mac"}
+    try:
+        head_seq = int(head["seq"])
+    except (TypeError, ValueError):
+        return {"head_valid": False, "reason": "head_mismatch"}
+    if head_seq != last["seq"] or head.get("hash") != last["record_hash"]:
+        return {"head_valid": False, "reason": "head_mismatch"}
+    expected = head_mac(key, last["seq"], last["record_hash"])
+    if not hmac.compare_digest(str(head["mac"]), expected):
+        return {"head_valid": False, "reason": "head_mac_invalid"}
+    return {"head_valid": True, "reason": None}
+
+
+def verify_store(store) -> dict:
+    """Hash-chain verification plus the HMAC over the current head."""
+    events = store.all_events()
+    result = verify_chain(events)
+    head = store.head_state()
+    signed = verify_head(events, head, store.chain_key())
+    result["head_valid"] = signed["head_valid"]
+    result["head_reason"] = signed["reason"]
+    result["key_id"] = head.get("key_id")
+    result["total"] = len(events)
+    if result["valid"] and not signed["head_valid"]:
+        result["valid"] = False
+        last_seq = events[-1]["seq"] if events else None
+        result["first_break_seq"] = last_seq
+        result["first_break"] = {
+            "seq": last_seq,
+            "kind": "head_mac",
+            "expected": "valid HMAC over seq:record_hash",
+            "actual": signed["reason"] or "invalid",
+        }
+    return result

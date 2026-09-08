@@ -6,13 +6,16 @@ basis points to avoid float-equality problems at the 1.00% boundary.
 """
 import pytest
 
+from pathlib import Path
+
 from app.policy.engine import Governor, load_policy
 from app.policy.rules import rule_p04_spread_sanity, spread_bps
 
-GOVERNOR = Governor(load_policy("policy.yaml"))
+ROOT = Path(__file__).resolve().parent.parent
+GOVERNOR = Governor(load_policy(str(ROOT / "policy.yaml")))
 
 
-@pytest.mark.parametrize("case", range(5),
+@pytest.mark.parametrize("case", range(6),
                          ids=lambda i: f"golden_{i + 1}")
 def test_policy_golden_cases(policy_cases, case):
     pinned = policy_cases[case]

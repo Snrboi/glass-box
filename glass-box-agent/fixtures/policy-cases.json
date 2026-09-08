@@ -83,5 +83,22 @@
       }
     },
     "expected": {"outcome": "HALT", "reason": "HALT_DRAWDOWN_BREAKER", "winning_rules": ["P-05"]}
+  },
+  {
+    "name": "exposure_cap_blocked",
+    "input": {
+      "action": "BUY",
+      "symbol": "BTCUSDT",
+      "quote_notional_usdt": 50.00,
+      "confidence": 0.62,
+      "market": {"bid": 105431.12, "ask": 105432.12},
+      "portfolio": {
+        "cash_usdt": 1000.00,
+        "positions": {"BTC": 0.002, "ETH": 0.0},
+        "day_realized_pnl_usdt": 0.00,
+        "marks": {"BTCUSDT": 105431.62, "ETHUSDT": 3450.29}
+      }
+    },
+    "expected": {"outcome": "BLOCK", "reason": "BLOCK_EXPOSURE_CAP", "winning_rules": ["P-03"]}
   }
 ]
