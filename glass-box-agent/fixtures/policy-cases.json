@@ -1,0 +1,87 @@
+[
+  {
+    "name": "clean_buy_executes",
+    "input": {
+      "action": "BUY",
+      "symbol": "BTCUSDT",
+      "quote_notional_usdt": 50.00,
+      "confidence": 0.62,
+      "market": {"bid": 105431.12, "ask": 105432.12},
+      "portfolio": {
+        "cash_usdt": 1000.00,
+        "positions": {"BTC": 0.0, "ETH": 0.0},
+        "day_realized_pnl_usdt": 0.00,
+        "marks": {"BTCUSDT": 105431.62, "ETHUSDT": 3450.29}
+      }
+    },
+    "expected": {"outcome": "EXECUTE", "reason": "ALL_RULES_PASS", "winning_rules": []}
+  },
+  {
+    "name": "low_confidence_blocked",
+    "input": {
+      "action": "BUY",
+      "symbol": "BTCUSDT",
+      "quote_notional_usdt": 50.00,
+      "confidence": 0.42,
+      "market": {"bid": 105431.12, "ask": 105432.12},
+      "portfolio": {
+        "cash_usdt": 1000.00,
+        "positions": {"BTC": 0.0, "ETH": 0.0},
+        "day_realized_pnl_usdt": 0.00,
+        "marks": {"BTCUSDT": 105431.62, "ETHUSDT": 3450.29}
+      }
+    },
+    "expected": {"outcome": "BLOCK", "reason": "BLOCK_CONF_LOW", "winning_rules": ["P-01"]}
+  },
+  {
+    "name": "confidence_boundary_executes",
+    "input": {
+      "action": "BUY",
+      "symbol": "BTCUSDT",
+      "quote_notional_usdt": 50.00,
+      "confidence": 0.55,
+      "market": {"bid": 105431.12, "ask": 105432.12},
+      "portfolio": {
+        "cash_usdt": 1000.00,
+        "positions": {"BTC": 0.0, "ETH": 0.0},
+        "day_realized_pnl_usdt": 0.00,
+        "marks": {"BTCUSDT": 105431.62, "ETHUSDT": 3450.29}
+      }
+    },
+    "expected": {"outcome": "EXECUTE", "reason": "ALL_RULES_PASS", "winning_rules": []}
+  },
+  {
+    "name": "notional_cap_blocked",
+    "input": {
+      "action": "BUY",
+      "symbol": "BTCUSDT",
+      "quote_notional_usdt": 75.00,
+      "confidence": 0.62,
+      "market": {"bid": 105431.12, "ask": 105432.12},
+      "portfolio": {
+        "cash_usdt": 1000.00,
+        "positions": {"BTC": 0.0, "ETH": 0.0},
+        "day_realized_pnl_usdt": 0.00,
+        "marks": {"BTCUSDT": 105431.62, "ETHUSDT": 3450.29}
+      }
+    },
+    "expected": {"outcome": "BLOCK", "reason": "BLOCK_NOTIONAL_CAP", "winning_rules": ["P-02"]}
+  },
+  {
+    "name": "drawdown_breaker_halts",
+    "input": {
+      "action": "BUY",
+      "symbol": "BTCUSDT",
+      "quote_notional_usdt": 50.00,
+      "confidence": 0.62,
+      "market": {"bid": 105431.12, "ask": 105432.12},
+      "portfolio": {
+        "cash_usdt": 1000.00,
+        "positions": {"BTC": 0.0, "ETH": 0.0},
+        "day_realized_pnl_usdt": -25.00,
+        "marks": {"BTCUSDT": 105431.62, "ETHUSDT": 3450.29}
+      }
+    },
+    "expected": {"outcome": "HALT", "reason": "HALT_DRAWDOWN_BREAKER", "winning_rules": ["P-05"]}
+  }
+]

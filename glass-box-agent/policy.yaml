@@ -1,0 +1,32 @@
+# Deterministic Risk Governor policy — evaluated in this exact fixed order.
+# The LLM never sees this file and cannot influence the verdicts.
+rules:
+  - id: P-05
+    name: DRAWDOWN_BREAKER
+    day_realized_loss_limit_usdt: 25.00   # PASS if day_realized_loss < 25.00; breach -> ESCALATE + HALT
+    on_breach: ESCALATE_HALT
+  - id: P-01
+    name: CONF_MIN
+    min_confidence: 0.55                  # PASS if confidence >= 0.55; breach -> BLOCK
+    on_breach: BLOCK
+  - id: P-02
+    name: NOTIONAL_CAP
+    max_notional_usdt: 50.00              # PASS if quote_notional_usdt <= 50.00; breach -> BLOCK
+    on_breach: BLOCK
+  - id: P-03
+    name: EXPOSURE_CAP
+    max_projected_exposure_usdt: 200.00   # PASS if projected exposure <= 200.00; breach -> BLOCK
+    on_breach: BLOCK
+  - id: P-04
+    name: SPREAD_SANITY
+    max_spread_bps: 100                   # PASS if spread <= 100 bps (1.00%); breach -> ESCALATE
+    on_breach: ESCALATE
+
+# Outcome precedence: HALT/ESCALATE wins -> first BLOCK in fixed order -> HOLD -> EXECUTE
+precedence: [HALT_ESCALATE, BLOCK, HOLD, EXECUTE]
+
+portfolio:
+  initial_cash_usdt: 1000.00
+  fee_bps: 10          # 0.10% simulated taker fee
+
+watchlist: [BTCUSDT, ETHUSDT]

@@ -1,0 +1,18 @@
+[
+  {
+    "name": "clean_buy",
+    "raw": "{\"action\": \"BUY\", \"symbol\": \"BTCUSDT\", \"quote_notional_usdt\": 50.00, \"confidence\": 0.62, \"thesis_plain_english\": \"Momentum is mildly positive, liquidity is steady and the spread is tight. A small long position keeps risk bounded while the setup remains valid.\", \"factors\": [{\"name\": \"momentum_1h\", \"value\": \"+0.8%\"}, {\"name\": \"spread_bps\", \"value\": \"0.9\"}, {\"name\": \"volatility\", \"value\": \"low\"}, {\"name\": \"book_depth\", \"value\": \"normal\"}], \"flags\": []}"
+  },
+  {
+    "name": "low_confidence_buy",
+    "raw": "{\"action\": \"BUY\", \"symbol\": \"ETHUSDT\", \"quote_notional_usdt\": 30.00, \"confidence\": 0.42, \"thesis_plain_english\": \"Tape is mixed and momentum diverges across venues. There may be a long edge forming but the signal quality is not convincing.\", \"factors\": [{\"name\": \"momentum_1h\", \"value\": \"+0.1%\"}, {\"name\": \"signal_agreement\", \"value\": \"2 of 5 venues\"}, {\"name\": \"volatility\", \"value\": \"rising\"}], \"flags\": []}"
+  },
+  {
+    "name": "hold",
+    "raw": "{\"action\": \"HOLD\", \"symbol\": \"ETHUSDT\", \"quote_notional_usdt\": 0.00, \"confidence\": 0.58, \"thesis_plain_english\": \"Market is range-bound with no clear edge in either direction. Standing aside until a higher-quality setup appears.\", \"factors\": [{\"name\": \"range_position\", \"value\": \"mid-range\"}, {\"name\": \"momentum_1h\", \"value\": \"+0.0%\"}, {\"name\": \"volatility\", \"value\": \"low\"}], \"flags\": []}"
+  },
+  {
+    "name": "malformed_missing_confidence",
+    "raw": "{\"action\": \"BUY\", \"symbol\": \"BTCUSDT\", \"quote_notional_usdt\": 50.00, \"thesis_plain_english\": \"This response is missing the required confidence field and must be rejected by the parser.\", \"factors\": [], \"flags\": []}"
+  }
+]
