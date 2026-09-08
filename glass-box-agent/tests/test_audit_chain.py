@@ -15,7 +15,7 @@ import time
 import pytest
 
 from app.audit.chain import ZERO, AuditStore, canonical, compute_hash
-from app.audit.verify import verify_chain
+from app.audit.verify import verify_chain, verify_store
 
 KNOWN_RECORD = {
     "seq": 1,
@@ -143,6 +143,23 @@ def test_triggers_reject_update_and_delete(services):
     with pytest.raises(sqlite3.IntegrityError, match="immutable"):
         conn.execute("DELETE FROM events WHERE seq = 1")
     conn.close()
+
+
+def test_head_mac_valid_after_append(services):
+    _build_chain(services.store, 3)
+    result = verify_store(services.store)
+    assert result["valid"] is True
+    assert result["head_valid"] is True
+    assert result["checked"] == 3
+
+
+def test_head_mac_detects_rewritten_mac(services):
+    _build_chain(services.store, 3)
+    services.store.meta_set("head_mac", "00" * 32)
+    result = verify_store(services.store)
+    assert result["head_valid"] is False
+    assert result["valid"] is False
+    assert result["first_break"]["kind"] == "head_mac"
 
 
 def test_tamper_roundtrip_through_database(services, tmp_path):

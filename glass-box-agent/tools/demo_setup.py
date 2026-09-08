@@ -29,7 +29,7 @@ ROTATION_TICKS = 5  # one full scenario rotation:
 def reset_data() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     for name in ("glassbox.db", "glassbox.db-wal", "glassbox.db-shm",
-                 "decisions.jsonl"):
+                 "decisions.jsonl", "chain.key"):
         path = DATA_DIR / name
         if path.exists():
             path.unlink()

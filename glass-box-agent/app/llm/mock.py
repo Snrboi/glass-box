@@ -14,10 +14,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "llm-responses.json"
+from ..policy.injection import INJECTION_FLAGS, looks_injected
 
-INJECTION_FLAGS = ["prompt_injection_detected",
-                   "instruction_like_text_inside_market_data"]
+FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "llm-responses.json"
 
 
 class MockLLM:
@@ -37,7 +36,7 @@ class MockLLM:
         # The system prompt contract: manipulated/wrong-looking data ->
         # ESCALATE with flags. Detected deterministically for the mock.
         note = snapshot.get("note", "")
-        if scenario == "prompt_injection" or self._looks_injected(note):
+        if scenario == "prompt_injection" or looks_injected(note):
             return json.dumps({
                 "action": "ESCALATE",
                 "symbol": focus_symbol,
@@ -70,11 +69,3 @@ class MockLLM:
     def malformed_response(self) -> str:
         """Direct access to the pinned malformed fixture (tests)."""
         return self._by_name["malformed_missing_confidence"]
-
-    # --------------------------------------------------------------
-    @staticmethod
-    def _looks_injected(note: str) -> bool:
-        lower = note.lower()
-        return ("ignore all previous" in lower
-                or "ignore previous instructions" in lower
-                or "system override" in lower)

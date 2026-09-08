@@ -20,6 +20,8 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .sign import head_mac, key_fingerprint, load_or_create_key
+
 ZERO = "0" * 64
 
 SCHEMA = """
@@ -71,7 +73,8 @@ class AuditStore:
     """Thread-safe append-only store. A single lock serializes appends so
     two concurrent writers can never fork the sequence."""
 
-    def __init__(self, db_path: str | Path, mirror=None):
+    def __init__(self, db_path: str | Path, mirror=None,
+                 key_path: str | Path | None = None):
         self.db_path = str(db_path)
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
@@ -81,6 +84,10 @@ class AuditStore:
         self._conn.commit()
         self._lock = threading.Lock()
         self.mirror = mirror  # app.audit.jsonl.JsonlMirror | None
+        self.key_path = Path(
+            key_path if key_path is not None
+            else Path(self.db_path).parent / "chain.key")
+        self._key = load_or_create_key(self.key_path)
 
     # ------------------------------------------------------------------ write
     def append(self, run_id: str, decision_id: str, event_type: str,
@@ -105,14 +112,26 @@ class AuditStore:
             }
             record_hash = compute_hash(record)
 
+            payload_text = (canonical(payload) if isinstance(payload, dict)
+                            else json.dumps(payload))
             self._conn.execute(
                 "INSERT INTO events (seq, ts, run_id, decision_id, event_type,"
                 "                    payload, prev_hash, record_hash)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (seq, ts, run_id, decision_id, event_type,
-                 canonical(payload) if isinstance(payload, dict) else json.dumps(payload),
-                 prev_hash, record_hash),
+                 payload_text, prev_hash, record_hash),
             )
+            mac = head_mac(self._key, seq, record_hash)
+            for meta_key, meta_value in (
+                ("head_seq", str(seq)),
+                ("head_hash", record_hash),
+                ("head_mac", mac),
+            ):
+                self._conn.execute(
+                    "INSERT INTO meta (key, value) VALUES (?, ?)"
+                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    (meta_key, meta_value),
+                )
             self._conn.commit()
 
         event = dict(record)
@@ -198,6 +217,20 @@ class AuditStore:
             "payload": row["payload"],          # JSON text (canonical form)
             "prev_hash": row["prev_hash"],
             "record_hash": row["record_hash"],
+        }
+
+    def chain_key(self) -> bytes:
+        return self._key
+
+    def key_id(self) -> str:
+        return key_fingerprint(self._key)
+
+    def head_state(self) -> dict:
+        return {
+            "seq": self.meta_get("head_seq"),
+            "hash": self.meta_get("head_hash"),
+            "mac": self.meta_get("head_mac"),
+            "key_id": self.key_id(),
         }
 
     def close(self) -> None:

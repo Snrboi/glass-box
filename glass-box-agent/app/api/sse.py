@@ -7,9 +7,12 @@ framework-light — publishing happens from the (threadpool) tick context.
 from __future__ import annotations
 
 import json
+import logging
 import queue
 import threading
 from typing import Iterator
+
+log = logging.getLogger("glassbox.sse")
 
 
 def format_sse(payload: dict, event: str | None = None) -> str:
@@ -43,7 +46,7 @@ class Broker:
             try:
                 q.put_nowait(msg)
             except queue.Full:
-                pass
+                log.warning("sse subscriber queue full; dropping audit event")
 
     def publish_message(self, msg: dict) -> None:
         with self._lock:
@@ -52,7 +55,7 @@ class Broker:
             try:
                 q.put_nowait(msg)
             except queue.Full:
-                pass
+                log.warning("sse subscriber queue full; dropping message")
 
 
 def stream_from_queue(q: queue.Queue, stop: threading.Event) -> Iterator[str]:

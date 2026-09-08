@@ -62,9 +62,17 @@ SCENARIOS: list[dict] = [
 class SimulatorMarket:
     name = "simulator"
 
-    def __init__(self):
-        self._idx = 0
+    def __init__(self, store=None):
+        self._store = store
         self._lock = threading.Lock()
+        self._idx = 0
+        if store is not None:
+            raw = store.meta_get("simulator_idx")
+            if raw is not None:
+                try:
+                    self._idx = int(raw)
+                except ValueError:
+                    self._idx = 0
 
     def peek_scenario(self) -> dict:
         with self._lock:
@@ -74,6 +82,9 @@ class SimulatorMarket:
         with self._lock:
             scenario = SCENARIOS[self._idx % len(SCENARIOS)]
             self._idx += 1
+            idx = self._idx
+        if self._store is not None:
+            self._store.meta_set("simulator_idx", str(idx))
         return build_snapshot(
             ts=utc_now_iso(), source=self.name, scenario=scenario["name"],
             note=scenario["note"], books=scenario["books"],
@@ -82,3 +93,5 @@ class SimulatorMarket:
     def reset(self) -> None:
         with self._lock:
             self._idx = 0
+        if self._store is not None:
+            self._store.meta_set("simulator_idx", "0")

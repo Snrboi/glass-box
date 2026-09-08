@@ -19,6 +19,7 @@
       <span class="badge badge-dry">DRY RUN</span>
       <span class="badge badge-sim">SIMULATED DATA</span>
       <button id="btn-tick" class="btn btn-primary">RUN TICK</button>
+      <button id="btn-pause" class="btn">PAUSE</button>
       <button id="btn-verify" class="btn">VERIFY CHAIN</button>
       <button id="btn-resume" class="btn btn-warn" hidden>RESUME</button>
       <button id="btn-clear-halt" class="btn btn-warn" hidden>CLEAR HALT</button>
@@ -32,6 +33,16 @@
       <div id="audit-status" class="audit-status">— NOT VERIFIED YET —</div>
     </div>
     <div id="audit-detail" class="audit-detail"></div>
+  </section>
+
+  <section id="portfolio-strip">
+    <span class="counter">CASH <b id="pf-cash">—</b></span>
+    <span class="counter">BTC <b id="pf-btc">—</b></span>
+    <span class="counter">ETH <b id="pf-eth">—</b></span>
+    <span class="counter">DAY PNL <b id="pf-pnl">—</b></span>
+    <span class="spacer"></span>
+    <span class="foot-meta" id="pf-policy">policy —</span>
+    <span class="foot-meta" id="pf-key">key —</span>
   </section>
 
   <!-- Single-screen layout: live trace (left) + decision drill-down (right) -->
@@ -63,6 +74,7 @@
     <span class="counter c-execute">EXECUTE <b id="cnt-execute">0</b></span>
     <span class="counter c-block">BLOCK <b id="cnt-block">0</b></span>
     <span class="counter c-escalate">ESCALATE/HALT <b id="cnt-escalate">0</b></span>
+    <span class="counter">HOLD <b id="cnt-hold">0</b></span>
     <span class="spacer"></span>
     <span class="foot-meta" id="foot-run">run —</span>
     <span class="foot-meta">chain <b id="foot-events">0</b> events</span>

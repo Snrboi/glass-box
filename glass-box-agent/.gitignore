@@ -5,4 +5,7 @@ __pycache__/
 *.db-wal
 *.db-shm
 data/*.jsonl
+data/chain.key
+chain.key
+.venv/
 .pytest_cache/

@@ -50,7 +50,7 @@ EXECUTE BLOCK   ESCALATE / HALT
 SIMULATED VENUE             (dry-run fills + portfolio effects only)
         |
         v
-HASH-CHAINED AUDIT STORE (SQLite INSERT-only + JSONL)
+HASH-CHAINED AUDIT STORE (SQLite INSERT-only + JSONL + HMAC head)
         |  SSE / REST
         v
 GLASS BOX CONSOLE (feed -> decision -> verify)
@@ -68,7 +68,11 @@ GLASS BOX CONSOLE (feed -> decision -> verify)
   event envelope** — sequence, timestamp, run/decision IDs, event type,
   payload **and** previous hash — not merely the payload. Retyping an
   event's `event_type` or `run_id` breaks verification exactly like
-  editing its payload.
+  editing its payload. Each `CYCLE_STARTED` event also snapshots the
+  **policy hash and rule thresholds** in force. The chain head is MAC'd
+  with HMAC-SHA256 (`data/chain.key`) so a full rewrite of hashes without
+  the key fails `/api/chain/verify`. The JSONL file is a convenience
+  mirror; export is generated from SQLite.
 - **Simulation is intentional.** Deterministic market fixtures make the
   judging experience reproducible, and the UI is explicit about
   simulation (`SIMULATED DATA` badge, `simulated` source labels).
@@ -99,7 +103,7 @@ ESCALATE (wide spread) → HOLD.
 ```bash
 python tools/verify_chain.py           # SQLite chain
 python tools/verify_chain.py --jsonl   # the JSONL export
-python -m pytest -q                    # ~39 tests: chain, tamper, policy, behavior
+python -m pytest -q                    # chain, tamper, policy, behavior, venue
 ```
 
 Response shape: `{ "valid": false, "checked": 183, "first_break_seq": 183 }`.
@@ -128,9 +132,10 @@ and can I verify it?
 
 - **Left:** the live decision trace — `CYCLE STARTED → DATA SNAPSHOT →
   ANALYSIS + RISK REVIEW → DECISION → EXECUTION`, each step appearing as
-  it happens (SSE).
+  it happens (SSE), with the scenario name on each card.
 - **Right (drill-down):** action/symbol/notional/confidence header; the
-  market snapshot with source and timestamp; the model's thesis and
+  **chained audit record** (seq / record hash / previous hash) for every
+  step; the market snapshot with source and timestamp; the model's thesis and
   factors; confidence as a prominent number with a simple bar — visually
   separated from **RISK GOVERNOR APPROVAL**, because *confidence is not
   permission to trade*; the five-rule governor table with **actual value
@@ -138,7 +143,9 @@ and can I verify it?
   winning rule; simulated fill evidence including `portfolio_after`
   chained inside the event; and a one-click **Why this decision?**
   plain-English summary.
-- **Footer:** cycle / execute / block / escalate-halt counters.
+- **Strip:** live simulated portfolio (cash / BTC / ETH / day PnL) plus
+  policy-hash and chain-key fingerprints.
+- **Footer:** cycle / execute / block / escalate-halt / hold counters.
 
 ## API
 
@@ -160,14 +167,19 @@ ticks cannot corrupt cycle state or append an inconsistent sequence.
 ## Security posture
 
 - Market data is **untrusted**: it enters the model inside a
-  `<market_data>` fence as data, never as instructions; injection-style
-  text is flagged and escalated, and is rendered in the UI with
-  `textContent` only (never `innerHTML`). No order is placed from a
-  prompt-injection attempt.
+  `<market_data>` fence as data, never as instructions. A **deterministic
+  detector** (not the LLM) flags instruction-like text and the governor
+  escalates `ESCALATE_PROMPT_INJECTION` even if the model proposes BUY.
+  The text is rendered in the UI with `textContent` only (never
+  `innerHTML`). No order is placed from a prompt-injection attempt.
 - Malformed model output → one retry → second failure escalates
   `LLM_UNRELIABLE`. Adapter failures escalate the same way.
 - The `events` table has SQLite triggers rejecting `UPDATE` and `DELETE`;
-  the application exposes no event-edit API.
+  the application exposes no event-edit API. The mutable
+  `portfolio_state` cache is rebuilt from the last chained
+  `EXECUTION_RESULT` at the start of every cycle.
+- Buys without cash and sells without inventory are blocked before fill
+  (`BLOCK_INSUFFICIENT_CASH`, `BLOCK_NO_POSITION`).
 - **Dry-run only.** No live execution path exists anywhere in this
   repository.
 
@@ -175,7 +187,12 @@ ticks cannot corrupt cycle state or append an inconsistent sequence.
 
 Dry-run, single-user, two-symbol watchlist (BTCUSDT, ETHUSDT), simulated
 fills. Not a financial product, not a production portfolio system. Fills,
-fees and PnL are deterministic simulations.
+fees and PnL are deterministic simulations. P-05 is **realized** PnL only.
+The head MAC is HMAC-SHA256 with `data/chain.key`: it stops a hash-rewrite
+by someone who has the DB file but not the key; anyone with **both** can
+re-MAC a forged chain. Keep the key off the DB host if that threat
+matters. Verification proves internal consistency plus possession of the
+key — not a public timestamp or third-party notary.
 
 ## Layout
 

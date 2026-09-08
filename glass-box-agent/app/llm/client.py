@@ -27,21 +27,19 @@ class ClaudeLLM:
         if not api_key:
             raise LLMUnavailable("ANTHROPIC_API_KEY is not set")
         try:
-            import anthropic  # noqa: F401
+            import anthropic
         except ImportError as exc:  # pragma: no cover - optional dependency
             raise LLMUnavailable(
                 "anthropic SDK not installed (pip install anthropic)") from exc
-        self._api_key = api_key
+        self._client = anthropic.Anthropic(api_key=api_key)
         self.model = model
 
     def propose(self, snapshot: dict, focus_symbol: str) -> str:
         """Call Claude with tool-use so the structured DecisionProposal is
         enforced by the API, and return the tool input as raw JSON text."""
         try:
-            import anthropic
             import json as _json
 
-            client = anthropic.Anthropic(api_key=self._api_key)
             tool = {
                 "name": "propose_decision",
                 "description": "Propose exactly ONE trading action as a "
@@ -49,7 +47,7 @@ class ClaudeLLM:
                                "risk governor to review.",
                 "input_schema": DECISION_PROPOSAL_SCHEMA,
             }
-            resp = client.messages.create(
+            resp = self._client.messages.create(
                 model=self.model,
                 max_tokens=800,
                 system=SYSTEM_PROMPT,

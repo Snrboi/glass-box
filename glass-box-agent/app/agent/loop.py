@@ -7,9 +7,12 @@ for the demo. pause/resume/halt semantics are enforced by AgentCycle.
 """
 from __future__ import annotations
 
+import logging
 import threading
 
 from .cycle import AgentCycle, AgentHalted, AgentPaused, TickConflict
+
+log = logging.getLogger("glassbox.loop")
 
 
 class AgentLoop:
@@ -36,6 +39,8 @@ class AgentLoop:
                 self._cycle.run()
             except (TickConflict, AgentHalted, AgentPaused):
                 continue
+            except Exception:
+                log.exception("agent loop tick failed")
 
     def stop(self) -> None:
         self._stop.set()

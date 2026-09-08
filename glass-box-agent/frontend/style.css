@@ -20,6 +20,13 @@
 
 html, body { height: 100%; }
 
+@media (max-width: 860px) {
+  body { overflow: auto; height: auto; }
+  #console { grid-template-columns: 1fr; }
+  #trace-pane { max-height: 40vh; border-right: none; border-bottom: 1px solid var(--line); }
+  .header-right { flex-wrap: wrap; }
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -87,6 +94,14 @@ body {
 .audit-broken .audit-status { color: var(--block); }
 .audit-broken .audit-detail { color: #FDA4A4; }
 
+/* ------------------------------------------------------ portfolio strip */
+#portfolio-strip {
+  display: flex; align-items: center; gap: 18px;
+  padding: 6px 16px; border-bottom: 1px solid var(--line);
+  background: var(--panel-2); font-size: 11px; letter-spacing: 1px;
+}
+#portfolio-strip .counter b { font-family: var(--mono); font-size: 12px; color: var(--text); }
+
 /* ------------------------------------------------------------- layout */
 #console {
   flex: 1; display: grid; grid-template-columns: 400px 1fr;
@@ -127,6 +142,10 @@ body {
 .trace-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; }
 .trace-id { font-weight: 700; }
 .trace-sym { color: var(--muted); }
+.trace-scenario {
+  font-size: 9px; letter-spacing: .5px; color: var(--sim);
+  border: 1px dashed var(--sim); border-radius: 4px; padding: 1px 5px;
+}
 .trace-time { margin-left: auto; color: var(--muted); font-size: 10px; }
 
 .outcome-chip {
